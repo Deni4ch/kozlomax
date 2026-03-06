@@ -4,123 +4,387 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KozloMax</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
-    body { font-family: Arial; margin:0; padding:20px; background:#0f0f0f; color:white; }
-    input, button { padding:12px; margin:5px; font-size:16px; width:100%; max-width:300px; }
-    button { background:#0066ff; border:none; cursor:pointer; }
-    .hidden { display:none; }
-    #messages { height:60vh; overflow-y:scroll; background:#1a1a1a; padding:10px; }
-    .msg { margin:10px 0; padding:10px; border-radius:8px; background:#333; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    :root {
+      --accent: #00d4ff;
+    }
+    
+    * { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+      color: white;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    .glass {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .neon-text {
+      text-shadow: 0 0 20px var(--accent);
+    }
+    
+    .chat-bubble {
+      max-width: 75%;
+      padding: 14px 18px;
+      border-radius: 20px;
+      position: relative;
+      animation: bubblePop 0.3s ease;
+    }
+    
+    .chat-bubble.sent {
+      background: linear-gradient(135deg, #00d4ff, #0099cc);
+      color: white;
+      border-bottom-right-radius: 4px;
+      margin-left: auto;
+    }
+    
+    .chat-bubble.received {
+      background: rgba(255,255,255,0.1);
+      border-bottom-left-radius: 4px;
+    }
+    
+    @keyframes bubblePop {
+      0% { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    
+    .message-container {
+      scrollbar-width: thin;
+      scrollbar-color: #00d4ff #1f2937;
+    }
+    
+    .tail {
+      position: absolute;
+      bottom: 0;
+      width: 12px;
+      height: 12px;
+    }
+    
+    .input-focus {
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.3);
+    }
+    
+    .screen {
+      animation: screenFade 0.4s ease forwards;
+    }
+    
+    @keyframes screenFade {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .logo-glow {
+      animation: logoPulse 3s infinite alternate;
+    }
+    
+    @keyframes logoPulse {
+      from { text-shadow: 0 0 10px #00d4ff; }
+      to { text-shadow: 0 0 40px #00d4ff, 0 0 60px #00d4ff; }
+    }
+    
+    .chat-list-item:hover {
+      background: rgba(255,255,255,0.05);
+      transform: translateX(4px);
+    }
+    
+    .auth-card {
+      box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+    }
   </style>
 </head>
-<body>
-  <!-- ЭКРАН ЛОГИНА -->
-  <div id="loginScreen">
-    <h1>🐐 KozloMax</h1>
-    <input id="loginEmail" placeholder="Почта" type="email">
-    <input id="loginPass" placeholder="Пароль" type="password">
-    <button onclick="login()">Войти</button>
-    <p>Нет аккаунта? <a href="#" onclick="showRegister()">Зарегистрироваться</a></p>
+<body class="flex items-center justify-center min-h-screen p-4">
+  <!-- SPLASH -->
+  <div id="splashScreen" class="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-[#0a0a0a] to-[#1a1a2e] z-50">
+    <div class="text-center">
+      <div class="flex justify-center mb-6">
+        <div class="w-24 h-24 bg-gradient-to-br from-[#00d4ff] to-[#0099cc] rounded-3xl flex items-center justify-center text-5xl shadow-2xl logo-glow">
+          🐐
+        </div>
+      </div>
+      <h1 class="text-6xl font-bold tracking-tighter neon-text">KozloMax</h1>
+      <p class="text-gray-400 mt-2 text-xl">самый козырный мессенджер</p>
+    </div>
   </div>
 
-  <!-- ЭКРАН РЕГИСТРАЦИИ -->
-  <div id="registerScreen" class="hidden">
-    <h1>Регистрация</h1>
-    <input id="regEmail" placeholder="Почта" type="email">
-    <input id="regPass" placeholder="Пароль" type="password">
-    <button onclick="register()">Создать аккаунт</button>
-    <p><a href="#" onclick="showLogin()">Уже есть аккаунт? Войти</a></p>
+  <!-- AUTH SCREEN -->
+  <div id="authScreen" class="hidden w-full max-w-md screen">
+    <div class="glass rounded-3xl p-8 auth-card">
+      <div class="flex justify-center mb-8">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-gradient-to-br from-[#00d4ff] to-[#0099cc] rounded-2xl flex items-center justify-center text-3xl">🐐</div>
+          <h1 class="text-4xl font-bold tracking-tighter">KozloMax</h1>
+        </div>
+      </div>
+
+      <!-- Табы -->
+      <div class="flex bg-gray-900/50 rounded-2xl p-1 mb-8">
+        <button onclick="switchTab(0)" id="tabLogin" class="flex-1 py-3 rounded-xl font-semibold text-sm active-tab">Вход</button>
+        <button onclick="switchTab(1)" id="tabRegister" class="flex-1 py-3 rounded-xl font-semibold text-sm">Регистрация</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="loginForm">
+        <div class="space-y-6">
+          <div>
+            <label class="text-xs text-gray-400 block mb-2">ПОЧТА</label>
+            <input id="loginEmail" type="email" placeholder="example@kozlo.ru" 
+                   class="w-full bg-gray-900/70 border border-gray-700 focus:border-[#00d4ff] rounded-2xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-2">ПАРОЛЬ</label>
+            <input id="loginPass" type="password" placeholder="••••••••" 
+                   class="w-full bg-gray-900/70 border border-gray-700 focus:border-[#00d4ff] rounded-2xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none">
+          </div>
+          <button onclick="login()" 
+                  class="w-full py-4 bg-gradient-to-r from-[#00d4ff] to-[#0099cc] hover:brightness-110 font-semibold text-lg rounded-2xl flex items-center justify-center gap-2">
+            <i class="fas fa-sign-in-alt"></i> Войти
+          </button>
+        </div>
+      </div>
+
+      <!-- REGISTER -->
+      <div id="registerForm" class="hidden">
+        <div class="space-y-6">
+          <div>
+            <label class="text-xs text-gray-400 block mb-2">ПОЧТА (обязательно)</label>
+            <input id="regEmail" type="email" placeholder="example@kozlo.ru" 
+                   class="w-full bg-gray-900/70 border border-gray-700 focus:border-[#00d4ff] rounded-2xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none">
+            <p id="emailError" class="text-red-400 text-xs mt-1 hidden">Неверный формат почты</p>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-2">ПАРОЛЬ</label>
+            <input id="regPass" type="password" placeholder="минимум 6 символов" 
+                   class="w-full bg-gray-900/70 border border-gray-700 focus:border-[#00d4ff] rounded-2xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none">
+          </div>
+          <button onclick="register()" 
+                  class="w-full py-4 bg-gradient-to-r from-[#00d4ff] to-[#0099cc] hover:brightness-110 font-semibold text-lg rounded-2xl flex items-center justify-center gap-2">
+            <i class="fas fa-user-plus"></i> Создать аккаунт
+          </button>
+        </div>
+      </div>
+    </div>
+    <p class="text-center text-gray-500 text-sm mt-6">Уже есть аккаунт? Просто войди выше 👆</p>
   </div>
 
-  <!-- ГЛАВНОЕ МЕНЮ (все чаты) -->
-  <div id="dashboardScreen" class="hidden">
-    <h1>🐐 KozloMax</h1>
-    <p id="welcome">Привет, </p>
-    <h2>Мои чаты (Direct Messages)</h2>
-    <button onclick="openChat()">Открыть Общий чат</button>
-    <br><br>
-    <button onclick="logout()">Выйти</button>
+  <!-- DASHBOARD (Мои чаты) -->
+  <div id="dashboardScreen" class="hidden w-full max-w-4xl h-screen flex flex-col screen">
+    <!-- Top bar -->
+    <div class="glass px-6 py-4 flex items-center justify-between border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-gradient-to-br from-[#00d4ff] to-[#0099cc] rounded-2xl flex items-center justify-center text-2xl">🐐</div>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tighter">KozloMax</h1>
+          <p class="text-xs text-emerald-400">онлайн • 1284 козлов</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div onclick="logout()" class="w-9 h-9 glass rounded-2xl flex items-center justify-center cursor-pointer hover:scale-110">
+          <i class="fas fa-sign-out-alt"></i>
+        </div>
+        <div id="userAvatar" class="w-9 h-9 bg-white/10 rounded-2xl flex items-center justify-center text-xl font-bold"></div>
+      </div>
+    </div>
+
+    <!-- Chat list -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-2" id="chatList">
+      <!-- Заполняется JS -->
+    </div>
+
+    <div class="glass p-4 border-t border-white/10 flex items-center gap-3">
+      <button onclick="openGlobalChat()" 
+              class="flex-1 py-4 bg-gradient-to-r from-[#00d4ff] to-[#0099cc] rounded-3xl font-semibold text-lg flex items-center justify-center gap-3">
+        <i class="fas fa-comments"></i> Открыть Общий DM
+      </button>
+    </div>
   </div>
 
-  <!-- ЧАТ -->
-  <div id="chatScreen" class="hidden">
-    <h2>Общий Direct Messages</h2>
-    <div id="messages"></div>
-    <input id="message" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') sendMessage()">
-    <button onclick="sendMessage()">Отправить</button>
-    <br><button onclick="backToDashboard()">Назад в меню</button>
+  <!-- CHAT SCREEN -->
+  <div id="chatScreen" class="hidden w-full max-w-4xl h-screen flex flex-col screen">
+    <!-- Chat header -->
+    <div class="glass px-6 py-4 flex items-center gap-4 border-b border-white/10">
+      <button onclick="backToDashboard()" class="text-2xl">←</button>
+      <div>
+        <div class="font-semibold text-xl flex items-center gap-2">
+          Общий Direct Messages 
+          <span class="text-xs bg-emerald-500 px-2 py-0.5 rounded-full text-black font-bold">LIVE</span>
+        </div>
+        <p class="text-xs text-emerald-400 flex items-center gap-1">
+          <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span> 1243 онлайн
+        </p>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 message-container bg-[#0f0f0f]">
+      <!-- сообщения добавляются JS -->
+    </div>
+
+    <!-- Input -->
+    <div class="glass p-4 border-t border-white/10">
+      <div class="flex items-center gap-3 bg-gray-900/70 rounded-3xl px-5 py-2">
+        <input id="messageInput" 
+               onkeypress="if(event.key==='Enter') sendMessage()"
+               class="flex-1 bg-transparent focus:outline-none text-lg placeholder-gray-400 input-focus" 
+               placeholder="Напиши козлам... 🐐">
+        <button onclick="sendMessage()" 
+                class="w-11 h-11 bg-gradient-to-br from-[#00d4ff] to-[#0099cc] rounded-2xl flex items-center justify-center text-2xl hover:scale-110">
+          ↑
+        </button>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     let token = localStorage.getItem('token');
-    let socket;
+    let currentUser = '';
+    let socket = null;
 
-    async function checkLogin() {
-      if (!token) return showLogin();
-      const res = await fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } });
+    // Tailwind script init
+    tailwind.config = { content: ["*"], theme: { extend: {} } };
+
+    function showScreen(screen) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+      document.getElementById(screen).classList.remove('hidden');
+    }
+
+    async function checkAuth() {
+      if (!token) {
+        setTimeout(() => {
+          document.getElementById('splashScreen').classList.add('hidden');
+          showScreen('authScreen');
+        }, 1800);
+        return;
+      }
+      const res = await fetch('/api/me', { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
-        document.getElementById('welcome').innerText = 'Привет, ' + data.email;
-        showDashboard();
+        currentUser = data.email;
+        document.getElementById('userAvatar').innerHTML = currentUser[0].toUpperCase();
+        document.getElementById('splashScreen').classList.add('hidden');
+        loadDashboard();
       } else {
-        showLogin();
+        localStorage.removeItem('token');
+        document.getElementById('splashScreen').classList.add('hidden');
+        showScreen('authScreen');
       }
     }
 
-    function showLogin() { document.getElementById('loginScreen').classList.remove('hidden'); document.getElementById('registerScreen').classList.add('hidden'); document.getElementById('dashboardScreen').classList.add('hidden'); document.getElementById('chatScreen').classList.add('hidden'); }
-    function showRegister() { document.getElementById('loginScreen').classList.add('hidden'); document.getElementById('registerScreen').classList.remove('hidden'); }
-    function showDashboard() { document.getElementById('loginScreen').classList.add('hidden'); document.getElementById('registerScreen').classList.add('hidden'); document.getElementById('dashboardScreen').classList.remove('hidden'); document.getElementById('chatScreen').classList.add('hidden'); }
-    function openChat() {
-      document.getElementById('dashboardScreen').classList.add('hidden');
-      document.getElementById('chatScreen').classList.remove('hidden');
-      if (!socket) {
-        socket = io();
-        socket.on('chat message', (data) => {
-          const div = document.createElement('div');
-          div.className = 'msg';
-          div.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
-          document.getElementById('messages').appendChild(div);
-          div.scrollIntoView();
-        });
-      }
+    function switchTab(tab) {
+      document.getElementById('loginForm').classList.toggle('hidden', tab === 1);
+      document.getElementById('registerForm').classList.toggle('hidden', tab === 0);
+      document.getElementById('tabLogin').classList.toggle('bg-white/10', tab === 0);
+      document.getElementById('tabRegister').classList.toggle('bg-white/10', tab === 1);
     }
-    function backToDashboard() { showDashboard(); }
 
     async function register() {
-      const email = document.getElementById('regEmail').value;
+      const email = document.getElementById('regEmail').value.trim();
       const pass = document.getElementById('regPass').value;
-      const res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) });
-      if (res.ok) { alert('Аккаунт создан! Теперь войди'); showLogin(); } else alert('Ошибка (возможно почта уже занята)');
-    }
-
-    async function login() {
-      const email = document.getElementById('loginEmail').value;
-      const pass = document.getElementById('loginPass').value;
-      const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) });
+      
+      if (!email || !pass) return alert('Заполни всё');
+      
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass })
+      });
+      
       const data = await res.json();
       if (res.ok) {
         localStorage.setItem('token', data.token);
         token = data.token;
-        document.getElementById('welcome').innerText = 'Привет, ' + data.email;
-        showDashboard();
-      } else alert(data.error || 'Ошибка входа');
+        currentUser = data.email;
+        document.getElementById('userAvatar').innerHTML = currentUser[0].toUpperCase();
+        loadDashboard(); // сразу в DM!
+      } else {
+        alert(data.error || 'Ошибка');
+      }
+    }
+
+    async function login() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const pass = document.getElementById('loginPass').value;
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('token', data.token);
+        token = data.token;
+        currentUser = data.email;
+        document.getElementById('userAvatar').innerHTML = currentUser[0].toUpperCase();
+        loadDashboard();
+      } else alert(data.error);
+    }
+
+    function loadDashboard() {
+      showScreen('dashboardScreen');
+      const list = document.getElementById('chatList');
+      list.innerHTML = `
+        <div onclick="openGlobalChat()" class="chat-list-item glass rounded-3xl p-5 flex items-center gap-4 cursor-pointer">
+          <div class="w-12 h-12 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-2xl flex items-center justify-center text-3xl">🌍</div>
+          <div class="flex-1">
+            <div class="font-semibold text-lg">Общий Direct Messages</div>
+            <div class="text-sm text-gray-400">1243 козла сейчас пишут</div>
+          </div>
+          <div class="text-xs bg-emerald-500 text-black px-3 py-1 rounded-2xl font-bold">LIVE</div>
+        </div>
+      `;
+    }
+
+    function openGlobalChat() {
+      showScreen('chatScreen');
+      if (!socket) {
+        socket = io();
+        socket.on('chat message', (data) => {
+          const div = document.createElement('div');
+          div.className = `flex ${data.user === currentUser ? 'justify-end' : 'justify-start'} mb-4`;
+          div.innerHTML = `
+            <div class="${data.user === currentUser ? 'chat-bubble sent' : 'chat-bubble received'}">
+              <div class="text-xs opacity-70 mb-1">${data.user}</div>
+              ${data.text}
+            </div>
+          `;
+          document.getElementById('messages').appendChild(div);
+          div.scrollIntoView({ behavior: 'smooth' });
+        });
+      }
+    }
+
+    function backToDashboard() {
+      showScreen('dashboardScreen');
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      if (!input.value.trim() || !socket) return;
+      
+      socket.emit('chat message', {
+        user: currentUser,
+        text: input.value.trim()
+      });
+      input.value = '';
     }
 
     function logout() {
       localStorage.removeItem('token');
-      showLogin();
-    }
-
-    function sendMessage() {
-      const input = document.getElementById('message');
-      if (!input.value) return;
-      socket.emit('chat message', { user: document.getElementById('welcome').innerText.replace('Привет, ', ''), text: input.value });
-      input.value = '';
+      location.reload();
     }
 
     // Запуск
-    checkLogin();
+    window.onload = checkAuth;
   </script>
 </body>
 </html>
