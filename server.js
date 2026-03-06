@@ -17,20 +17,36 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// Таблицы
 pool.query(`
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
+    name TEXT,
+    surname TEXT,
+    age INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    email TEXT NOT NULL,
+    name TEXT,
+    text TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kozlomax-super-secret-2026';
 
+// РЕГИСТРАЦИЯ (только email + пароль)
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Заполни все поля' });
+  if (password.length < 6) return res.status(400).json({ error: 'Пароль минимум 6 символов' });
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) return res.status(400).json({ error: 'Неверный формат почты' });
@@ -38,8 +54,6 @@ app.post('/api/register', async (req, res) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
     await pool.query('INSERT INTO users (email, password) VALUES ($1, $2)', [email, hashed]);
-    
-    // Сразу выдаём токен — чтобы после регистрации сразу в DM
     const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ success: true, token, email });
   } catch (e) {
@@ -47,33 +61,66 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// ОБНОВЛЕНИЕ ПРОФИЛЯ (после регистрации)
+app.post('/api/update-profile', async (req, res) => {
+  const { token, name, surname, age } = req.body;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    await pool.query(
+      'UPDATE users SET name = $1, surname = $2, age = $3 WHERE email = $4',
+      [name, surname || null, age || null, decoded.email]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(401).json({ error: 'Ошибка' });
+  }
+});
+
+// ЛОГИН
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   const user = result.rows[0];
-
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ error: 'Неверная почта или пароль' });
   }
-
   const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ token, email: user.email });
+  res.json({ token, email: user.email, name: user.name });
 });
 
-app.get('/api/me', (req, res) => {
+// Мои данные
+app.get('/api/me', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Нет токена' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    res.json({ email: decoded.email });
+    const result = await pool.query('SELECT email, name FROM users WHERE email = $1', [decoded.email]);
+    res.json(result.rows[0]);
   } catch (e) {
     res.status(401).json({ error: 'Сессия истекла' });
   }
 });
 
+// ИСТОРИЯ СООБЩЕНИЙ
+app.get('/api/messages', async (req, res) => {
+  const result = await pool.query(
+    'SELECT email, name, text, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100'
+  );
+  res.json(result.rows.reverse());
+});
+
+// Сокеты + сохранение в БД
 io.on('connection', (socket) => {
-  socket.on('chat message', (data) => io.emit('chat message', data));
+  socket.on('chat message', async (data) => {
+    // Сохраняем в БД
+    await pool.query(
+      'INSERT INTO messages (email, name, text) VALUES ($1, $2, $3)',
+      [data.email, data.name, data.text]
+    );
+    // Отправляем всем
+    io.emit('chat message', data);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('KozloMax — красивый и живой!'));
+server.listen(PORT, () => console.log('KozloMax v3 — чат для своих запущен!'));
