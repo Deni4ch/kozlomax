@@ -17,7 +17,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Таблицы
 pool.query(`
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -33,6 +32,7 @@ pool.query(`
 pool.query(`
   CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
+    room TEXT NOT NULL,
     email TEXT NOT NULL,
     name TEXT,
     text TEXT NOT NULL,
@@ -42,7 +42,7 @@ pool.query(`
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kozlomax-super-secret-2026';
 
-// РЕГИСТРАЦИЯ (только email + пароль)
+// Регистрация
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Заполни все поля' });
@@ -61,7 +61,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// ОБНОВЛЕНИЕ ПРОФИЛЯ (после регистрации)
+// Обновление профиля
 app.post('/api/update-profile', async (req, res) => {
   const { token, name, surname, age } = req.body;
   try {
@@ -76,7 +76,7 @@ app.post('/api/update-profile', async (req, res) => {
   }
 });
 
-// ЛОГИН
+// Логин
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -85,7 +85,7 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Неверная почта или пароль' });
   }
   const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ token, email: user.email, name: user.name });
+  res.json({ token, email: user.email, name: user.name || user.email });
 });
 
 // Мои данные
@@ -101,26 +101,36 @@ app.get('/api/me', async (req, res) => {
   }
 });
 
-// ИСТОРИЯ СООБЩЕНИЙ
-app.get('/api/messages', async (req, res) => {
-  const result = await pool.query(
-    'SELECT email, name, text, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100'
-  );
-  res.json(result.rows.reverse());
+// Список всех пользователей для DM
+app.get('/api/users', async (req, res) => {
+  const result = await pool.query('SELECT email, name FROM users ORDER BY name');
+  res.json(result.rows);
 });
 
-// Сокеты + сохранение в БД
+// История сообщений в комнате
+app.get('/api/messages/:room', async (req, res) => {
+  const { room } = req.params;
+  const result = await pool.query(
+    'SELECT email, name, text, timestamp FROM messages WHERE room = $1 ORDER BY timestamp ASC LIMIT 200',
+    [room]
+  );
+  res.json(result.rows);
+});
+
+// Сокеты
 io.on('connection', (socket) => {
+  socket.on('join room', (room) => {
+    socket.join(room);
+  });
+
   socket.on('chat message', async (data) => {
-    // Сохраняем в БД
     await pool.query(
-      'INSERT INTO messages (email, name, text) VALUES ($1, $2, $3)',
-      [data.email, data.name, data.text]
+      'INSERT INTO messages (room, email, name, text) VALUES ($1, $2, $3, $4)',
+      [data.room, data.email, data.name, data.text]
     );
-    // Отправляем всем
-    io.emit('chat message', data);
+    io.to(data.room).emit('chat message', data);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('KozloMax v3 — чат для своих запущен!'));
+server.listen(PORT, () => console.log('KozloMax — полностью исправлен и с DM!'));
