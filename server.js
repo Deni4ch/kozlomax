@@ -17,7 +17,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Создаём таблицу пользователей (автоматически)
 pool.query(`
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -27,23 +26,27 @@ pool.query(`
   )
 `);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'temp-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'kozlomax-super-secret-2026';
 
-// === API РЕГИСТРАЦИЯ ===
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Заполни все поля' });
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return res.status(400).json({ error: 'Неверный формат почты' });
+
   try {
     const hashed = await bcrypt.hash(password, 10);
     await pool.query('INSERT INTO users (email, password) VALUES ($1, $2)', [email, hashed]);
-    res.json({ success: true });
+    
+    // Сразу выдаём токен — чтобы после регистрации сразу в DM
+    const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ success: true, token, email });
   } catch (e) {
-    res.status(400).json({ error: 'Такая почта уже есть' });
+    res.status(400).json({ error: 'Такая почта уже существует' });
   }
 });
 
-// === API ЛОГИН ===
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -53,15 +56,13 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Неверная почта или пароль' });
   }
 
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ token, email: user.email });
 });
 
-// === ПРОВЕРКА СЕССИИ ===
 app.get('/api/me', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Нет токена' });
-
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     res.json({ email: decoded.email });
@@ -71,9 +72,8 @@ app.get('/api/me', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('Пользователь в чате');
   socket.on('chat message', (data) => io.emit('chat message', data));
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`KozloMax работает!`));
+server.listen(PORT, () => console.log('KozloMax — красивый и живой!'));
