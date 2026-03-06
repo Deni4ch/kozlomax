@@ -5,54 +5,122 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KozloMax</title>
   <style>
-    body { font-family: Arial; margin: 0; padding: 20px; background: #0f0f0f; color: white; }
-    #messages { height: 70vh; overflow-y: scroll; border: 1px solid #333; padding: 10px; margin-bottom: 10px; background: #1a1a1a; }
-    .msg { margin: 8px 0; padding: 8px; border-radius: 8px; max-width: 80%; }
-    .msg.me { background: #0066ff; align-self: flex-end; margin-left: auto; }
-    input { padding: 12px; width: 70%; font-size: 16px; }
-    button { padding: 12px 20px; background: #0066ff; color: white; border: none; cursor: pointer; }
+    body { font-family: Arial; margin:0; padding:20px; background:#0f0f0f; color:white; }
+    input, button { padding:12px; margin:5px; font-size:16px; width:100%; max-width:300px; }
+    button { background:#0066ff; border:none; cursor:pointer; }
+    .hidden { display:none; }
+    #messages { height:60vh; overflow-y:scroll; background:#1a1a1a; padding:10px; }
+    .msg { margin:10px 0; padding:10px; border-radius:8px; background:#333; }
   </style>
 </head>
 <body>
-  <h1>🐐 KozloMax</h1>
-  
-  <input id="username" placeholder="Твоё имя" value="Гость">
-  <button onclick="startChat()">Войти в чат</button>
+  <!-- ЭКРАН ЛОГИНА -->
+  <div id="loginScreen">
+    <h1>🐐 KozloMax</h1>
+    <input id="loginEmail" placeholder="Почта" type="email">
+    <input id="loginPass" placeholder="Пароль" type="password">
+    <button onclick="login()">Войти</button>
+    <p>Нет аккаунта? <a href="#" onclick="showRegister()">Зарегистрироваться</a></p>
+  </div>
 
-  <div id="chat" style="display:none;">
+  <!-- ЭКРАН РЕГИСТРАЦИИ -->
+  <div id="registerScreen" class="hidden">
+    <h1>Регистрация</h1>
+    <input id="regEmail" placeholder="Почта" type="email">
+    <input id="regPass" placeholder="Пароль" type="password">
+    <button onclick="register()">Создать аккаунт</button>
+    <p><a href="#" onclick="showLogin()">Уже есть аккаунт? Войти</a></p>
+  </div>
+
+  <!-- ГЛАВНОЕ МЕНЮ (все чаты) -->
+  <div id="dashboardScreen" class="hidden">
+    <h1>🐐 KozloMax</h1>
+    <p id="welcome">Привет, </p>
+    <h2>Мои чаты (Direct Messages)</h2>
+    <button onclick="openChat()">Открыть Общий чат</button>
+    <br><br>
+    <button onclick="logout()">Выйти</button>
+  </div>
+
+  <!-- ЧАТ -->
+  <div id="chatScreen" class="hidden">
+    <h2>Общий Direct Messages</h2>
     <div id="messages"></div>
-    <input id="message" placeholder="Напиши сообщение..." onkeypress="if(event.key==='Enter') sendMessage()">
+    <input id="message" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') sendMessage()">
     <button onclick="sendMessage()">Отправить</button>
+    <br><button onclick="backToDashboard()">Назад в меню</button>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    let socket, username;
-    
-    function startChat() {
-      username = document.getElementById('username').value || 'Аноним';
-      document.getElementById('chat').style.display = 'block';
-      socket = io();
-      
-      socket.on('chat message', (data) => {
-        const div = document.createElement('div');
-        div.className = 'msg ' + (data.user === username ? 'me' : '');
-        div.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
-        document.getElementById('messages').appendChild(div);
-        div.scrollIntoView();
-      });
+    let token = localStorage.getItem('token');
+    let socket;
+
+    async function checkLogin() {
+      if (!token) return showLogin();
+      const res = await fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('welcome').innerText = 'Привет, ' + data.email;
+        showDashboard();
+      } else {
+        showLogin();
+      }
     }
-    
+
+    function showLogin() { document.getElementById('loginScreen').classList.remove('hidden'); document.getElementById('registerScreen').classList.add('hidden'); document.getElementById('dashboardScreen').classList.add('hidden'); document.getElementById('chatScreen').classList.add('hidden'); }
+    function showRegister() { document.getElementById('loginScreen').classList.add('hidden'); document.getElementById('registerScreen').classList.remove('hidden'); }
+    function showDashboard() { document.getElementById('loginScreen').classList.add('hidden'); document.getElementById('registerScreen').classList.add('hidden'); document.getElementById('dashboardScreen').classList.remove('hidden'); document.getElementById('chatScreen').classList.add('hidden'); }
+    function openChat() {
+      document.getElementById('dashboardScreen').classList.add('hidden');
+      document.getElementById('chatScreen').classList.remove('hidden');
+      if (!socket) {
+        socket = io();
+        socket.on('chat message', (data) => {
+          const div = document.createElement('div');
+          div.className = 'msg';
+          div.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
+          document.getElementById('messages').appendChild(div);
+          div.scrollIntoView();
+        });
+      }
+    }
+    function backToDashboard() { showDashboard(); }
+
+    async function register() {
+      const email = document.getElementById('regEmail').value;
+      const pass = document.getElementById('regPass').value;
+      const res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) });
+      if (res.ok) { alert('Аккаунт создан! Теперь войди'); showLogin(); } else alert('Ошибка (возможно почта уже занята)');
+    }
+
+    async function login() {
+      const email = document.getElementById('loginEmail').value;
+      const pass = document.getElementById('loginPass').value;
+      const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('token', data.token);
+        token = data.token;
+        document.getElementById('welcome').innerText = 'Привет, ' + data.email;
+        showDashboard();
+      } else alert(data.error || 'Ошибка входа');
+    }
+
+    function logout() {
+      localStorage.removeItem('token');
+      showLogin();
+    }
+
     function sendMessage() {
       const input = document.getElementById('message');
       if (!input.value) return;
-      
-      socket.emit('chat message', {
-        user: username,
-        text: input.value
-      });
+      socket.emit('chat message', { user: document.getElementById('welcome').innerText.replace('Привет, ', ''), text: input.value });
       input.value = '';
     }
+
+    // Запуск
+    checkLogin();
   </script>
 </body>
 </html>
