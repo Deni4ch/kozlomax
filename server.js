@@ -29,8 +29,6 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
-  // Добавляем колонки если их нет (миграция)
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS surname TEXT`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS age INTEGER`);
@@ -45,6 +43,9 @@ async function initDB() {
       timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Миграция для messages
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS room TEXT`);
+  await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS name TEXT`);
 
   console.log('БД готова');
 }
