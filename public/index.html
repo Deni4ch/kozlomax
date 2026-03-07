@@ -399,6 +399,7 @@
   <div class="call-av c0" id="callAv"></div>
   <div class="call-name" id="callName"></div>
   <div class="call-status" id="callStatus"></div>
+  <div id="callMicWrap" style="margin-bottom:4px"></div>
   <div class="call-btns">
     <button class="call-btn mute-btn" id="muteBtn" onclick="toggleMute()" title="Микрофон">🎤</button>
     <button class="call-btn cam-btn" id="camBtn" onclick="toggleCam()" title="Камера" style="display:none">📹</button>
@@ -451,7 +452,56 @@ let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 
-const STUN = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+const STUN = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'turn:global.relay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:global.relay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  ]
+};
+
+// Отключаем агрессивный шумодав браузера — он глотает слова
+const AUDIO_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: false,
+  autoGainControl: false,
+  sampleRate: 48000,
+  channelCount: 1
+};
+
+let availableMics = [], selectedMicId = null;
+
+async function loadMics() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableMics = devices.filter(d => d.kind === 'audioinput');
+  } catch(e) {}
+}
+
+function buildMicSelect() {
+  if (availableMics.length <= 1) return '';
+  const opts = availableMics.map(m =>
+    `<option value="${m.deviceId}" ${m.deviceId===selectedMicId?'selected':''}>${m.label||'Mic '+m.deviceId.slice(0,6)}</option>`
+  ).join('');
+  return `<select id="micSelect" onchange="changeMic(this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 10px;font-size:12px;max-width:200px">${opts}</select>`;
+}
+
+async function changeMic(deviceId) {
+  selectedMicId = deviceId;
+  if (!localStream) return;
+  const hasVideo = localStream.getVideoTracks().length > 0;
+  const ns = await navigator.mediaDevices.getUserMedia({
+    audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } },
+    video: hasVideo
+  });
+  const newAudio = ns.getAudioTracks()[0];
+  const sender = pc?.getSenders().find(s => s.track?.kind === 'audio');
+  if (sender) await sender.replaceTrack(newAudio);
+  localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
+  localStream.addTrack(newAudio);
+}
 
 // ═══════════════════════════════════════════════════════
 // THEME
@@ -832,7 +882,7 @@ async function toggleRecording() {
   const btn=document.getElementById('voiceBtn');
   if (!isRecording) {
     try {
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const stream=await navigator.mediaDevices.getUserMedia({audio:AUDIO_CONSTRAINTS});
       mediaRecorder=new MediaRecorder(stream);
       audioChunks=[];
       mediaRecorder.ondataavailable=e=>audioChunks.push(e.data);
@@ -1051,7 +1101,11 @@ async function startCall(callType) {
   const callId = Date.now().toString();
   callData = { to: currentChatEmail, callId, callType };
 
-  localStream = await navigator.mediaDevices.getUserMedia({ audio:true, video: callType==='video' });
+  await loadMics();
+  const audioConstraint = selectedMicId
+    ? { ...AUDIO_CONSTRAINTS, deviceId: { exact: selectedMicId } }
+    : AUDIO_CONSTRAINTS;
+  localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint, video: callType==='video' });
   pc = new RTCPeerConnection(STUN);
   localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
 
@@ -1085,7 +1139,11 @@ async function onCallIncoming(data) {
 async function acceptCall() {
   document.getElementById('incomingCall').classList.remove('show');
   const data=callData;
-  localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:data.callType==='video'});
+  await loadMics();
+  const audioConstraint2 = selectedMicId
+    ? { ...AUDIO_CONSTRAINTS, deviceId: { exact: selectedMicId } }
+    : AUDIO_CONSTRAINTS;
+  localStream=await navigator.mediaDevices.getUserMedia({audio:audioConstraint2,video:data.callType==='video'});
   pc=new RTCPeerConnection(STUN);
   localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
 
@@ -1142,6 +1200,9 @@ function showCallOverlay(name, status, callType) {
   av.className=`call-av ${avColor(name)}`; av.textContent=initials(name);
   document.getElementById('callName').textContent=name;
   document.getElementById('callStatus').textContent=status;
+  // Mic selector
+  const micWrap = document.getElementById('callMicWrap');
+  if (micWrap) micWrap.innerHTML = buildMicSelect();
   document.getElementById('callOverlay').classList.add('show');
 }
 function toggleMute() {
