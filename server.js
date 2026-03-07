@@ -53,6 +53,8 @@ async function initDB() {
   for (const [col, type] of [['room','TEXT'],['name','TEXT'],['type','TEXT'],['file_url','TEXT']]) {
     await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS ${col} ${type}`).catch(()=>{});
   }
+  // Fix: remove NOT NULL constraint on text (for images/audio messages)
+  await pool.query(`ALTER TABLE messages ALTER COLUMN text DROP NOT NULL`).catch(()=>{});
   await pool.query(`CREATE TABLE IF NOT EXISTS blocks (
     id SERIAL PRIMARY KEY, blocker_email TEXT NOT NULL, blocked_email TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(blocker_email, blocked_email)
@@ -301,8 +303,12 @@ io.on('connection', (socket) => {
     if (myEmail && onlineUsers.has(myEmail)) {
       onlineUsers.get(myEmail).sockets.delete(socket.id);
       if (onlineUsers.get(myEmail).sockets.size === 0) {
-        await pool.query('UPDATE users SET last_seen=NOW() WHERE email=$1', [myEmail]);
-        broadcastStatus(myEmail, onlineUsers.get(myEmail).statusMode);
+        const mode = onlineUsers.get(myEmail).statusMode;
+        // Don't update last_seen if invisible — it would reveal when they were online
+        if (mode !== 'invisible') {
+          await pool.query('UPDATE users SET last_seen=NOW() WHERE email=$1', [myEmail]);
+        }
+        broadcastStatus(myEmail, mode);
       }
     }
   });
