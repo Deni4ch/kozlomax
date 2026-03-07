@@ -234,6 +234,16 @@ app.post('/api/upload/audio', authMiddleware, upload.single('file'), async (req,
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/upload/video', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    const result = await uploadStream(req.file.buffer, {
+      folder: 'kozlomax/videos', resource_type: 'video',
+      transformation: [{ quality: 'auto', fetch_format: 'auto' }]
+    });
+    res.json({ url: result.secure_url });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // MESSAGES
 app.get('/api/messages/:room', authMiddleware, async (req, res) => {
   const r = await pool.query(
